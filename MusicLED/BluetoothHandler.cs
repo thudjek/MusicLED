@@ -2,7 +2,7 @@
 
 namespace MusicLED;
 
-public class BluetoothHandler
+public class BluetoothHandler : IDisposable
 {
     private readonly string SETUP_SCRIPT_PATH;
     private readonly string RESET_SCRIPT_PATH;
@@ -13,8 +13,9 @@ public class BluetoothHandler
     {
         SETUP_SCRIPT_PATH = Path.Combine(AppContext.BaseDirectory, "setup-bluetooth-speaker.sh");
         RESET_SCRIPT_PATH = Path.Combine(AppContext.BaseDirectory, "reset-bluetooth-speaker.sh");
-        MakeScriptExecutable(SETUP_SCRIPT_PATH);
-        MakeScriptExecutable(RESET_SCRIPT_PATH);
+        ChmodHelper.MakeFileExecutable(SETUP_SCRIPT_PATH);
+        ChmodHelper.MakeFileExecutable(RESET_SCRIPT_PATH);
+        RunSetupSpeakerScript();
     }
 
     public void RunSetupSpeakerScript()
@@ -109,7 +110,7 @@ public class BluetoothHandler
             {
                 Console.WriteLine($"Found bluetooth device: {device}");
                 currentBluetoothDevice = device;
-                // Return the node name directly for PipeWire recording
+
                 return device;
             }
 
@@ -135,7 +136,6 @@ public class BluetoothHandler
     {
         try
         {
-            // First check if there's any Bluetooth audio stream active
             var process = new Process
             {
                 StartInfo = new ProcessStartInfo
@@ -155,7 +155,6 @@ public class BluetoothHandler
 
             if (hasBluetoothStream == "found")
             {
-                // Find the RUNNING sink (the one actually playing audio)
                 process = new Process
                 {
                     StartInfo = new ProcessStartInfo
@@ -175,7 +174,6 @@ public class BluetoothHandler
 
                 if (!string.IsNullOrWhiteSpace(sinkName))
                 {
-                    // Return the monitor of this sink
                     return $"{sinkName}.monitor";
                 }
             }
@@ -188,29 +186,9 @@ public class BluetoothHandler
         return null;
     }
 
-    private static void MakeScriptExecutable(string scriptPath)
+    public void Dispose()
     {
-        using var chmodProcess = Process.Start(new ProcessStartInfo
-        {
-            FileName = "/bin/chmod",
-            Arguments = $"+x {scriptPath}",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false
-        });
-
-        if (chmodProcess != null)
-        {
-            chmodProcess.WaitForExit();
-
-            if (chmodProcess.ExitCode == 0)
-            {
-                Console.WriteLine($"Script {scriptPath} is now exectuable");
-            }
-            else
-            {
-                Console.WriteLine($"Chmod +x for {scriptPath} failed");
-            }
-        }
+        GC.SuppressFinalize(this);
+        RunResetSpeakerScript();
     }
 }

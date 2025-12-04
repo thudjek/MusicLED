@@ -10,16 +10,13 @@ public class FFTAnalyzer
     private readonly Complex[] _complexBuffer;
     private readonly double[] _window;
 
-    public FFTAnalyzer(int sampleRate = 44100, int fftSize = 2048)
+    public FFTAnalyzer()
     {
-        if ((fftSize & (fftSize - 1)) != 0)
-            throw new ArgumentException("FFT size must be a power of 2");
+        _sampleRate = 48000;
+        _fftSize = 2048;
+        _complexBuffer = new Complex[_fftSize];
 
-        _sampleRate = sampleRate;
-        _fftSize = fftSize;
-        _complexBuffer = new Complex[fftSize];
-
-        _window = CreateHammingWindow(fftSize);
+        _window = CreateHammingWindow(_fftSize);
     }
 
     public void Analyze(short[] samples, FrequencyBands frequencyBands)
@@ -59,7 +56,7 @@ public class FFTAnalyzer
     {
         var binWidth = (double)_sampleRate / _fftSize;
 
-        var bassEnd = (int)(250 / binWidth);
+        var bassEnd = (int)(450 / binWidth);
         var midEnd = (int)(4000 / binWidth);
         var nyquist = _fftSize / 2;
 
@@ -90,7 +87,7 @@ public class FFTAnalyzer
         var mid = (float)Math.Sqrt(midEnergy / (midEnd - bassEnd));
         var treble = (float)Math.Sqrt(trebleEnergy / (nyquist - midEnd));
 
-        bass *= 150.0f;
+        bass *= 50.0f;  // Reduced to prevent constant saturation at 1.0
         mid *= 120.0f;
         treble *= 235.0f;
 

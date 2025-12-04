@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>MusicLED</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        select, input[type="color"] {
+            padding: 5px;
+            font-size: 16px;
+        }
+        #fixedOptions, #runningOptions, #transitionOptions {
+            display: none;
+            margin-top: 15px;
+        }
+        input[type="number"] {
+            padding: 5px;
+            font-size: 16px;
+            width: 80px;
+        }
+        #colorPickers {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        input[type="color"] {
+            width: 50px;
+            height: 40px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="control-group">
+        <label for="mode">Mode:</label>
+        <select id="mode" name="mode">
+            <option value="0" selected>Off</option>
+            <option value="1">Fixed</option>
+            <option value="2">Running</option>
+            <option value="3">Smooth</option>
+            <option value="4">Music</option>
+        </select>
+    </div>
+
+    <div id="fixedOptions">
+        <div class="control-group">
+            <label for="colorCount">Number of colors:</label>
+            <select id="colorCount">
+                <option value="1" selected>1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Colors:</label>
+            <div id="colorPickers"></div>
+        </div>
+    </div>
+
+    <div id="runningOptions">
+        <div class="control-group">
+            <label for="numOfRunningLeds">Number of running LEDs:</label>
+            <input type="number" id="numOfRunningLeds" value="1" min="1">
+        </div>
+        <div class="control-group">
+            <label for="runningDelay">Running delay (ms):</label>
+            <input type="number" id="runningDelay" value="100" min="1">
+        </div>
+    </div>
+
+    <div id="transitionOptions">
+        <div class="control-group">
+            <label for="transitionSteps">Transition steps:</label>
+            <input type="number" id="transitionSteps" value="10" min="1">
+        </div>
+        <div class="control-group">
+            <label for="transitionDelay">Transition delay (ms):</label>
+            <input type="number" id="transitionDelay" value="50" min="1">
+        </div>
+    </div>
+
+    <script>
+        const modeSelect = document.getElementById('mode');
+        const fixedOptions = document.getElementById('fixedOptions');
+        const runningOptions = document.getElementById('runningOptions');
+        const transitionOptions = document.getElementById('transitionOptions');
+        const colorCountSelect = document.getElementById('colorCount');
+        const colorPickersContainer = document.getElementById('colorPickers');
+        const numOfRunningLedsInput = document.getElementById('numOfRunningLeds');
+        const runningDelayInput = document.getElementById('runningDelay');
+        const transitionStepsInput = document.getElementById('transitionSteps');
+        const transitionDelayInput = document.getElementById('transitionDelay');
+
+        function getColorValues() {
+            const colorInputs = colorPickersContainer.querySelectorAll('input[type="color"]');
+            return Array.from(colorInputs).map(input => input.value);
+        }
+
+        function createColorPickers(count, colors = null) {
+            const currentColors = colors || getColorValues();
+            colorPickersContainer.innerHTML = '';
+
+            for (let i = 0; i < count; i++) {
+                const colorInput = document.createElement('input');
+                colorInput.type = 'color';
+                colorInput.value = currentColors[i] || '#ff0000';
+                colorInput.addEventListener('input', sendModeRequest);
+                colorPickersContainer.appendChild(colorInput);
+            }
+        }
+
+        function updateUI(status) {
+            // Set mode dropdown
+            modeSelect.value = status.mode.toString();
+
+            // Show/hide options based on mode
+            fixedOptions.style.display = status.mode === 1 ? 'block' : 'none';
+            runningOptions.style.display = status.mode === 2 ? 'block' : 'none';
+            transitionOptions.style.display = status.mode === 3 ? 'block' : 'none';
+
+            // Set Fixed mode options
+            if (status.fixedColors && status.fixedColors.length > 0) {
+                colorCountSelect.value = status.fixedColors.length.toString();
+                createColorPickers(status.fixedColors.length, status.fixedColors);
+            } else {
+                createColorPickers(1);
+            }
+
+            // Set Running mode options
+            if (status.numOfRunningLeds) {
+                numOfRunningLedsInput.value = status.numOfRunningLeds;
+            }
+
+            if (status.runningDelay) {
+                runningDelayInput.value = status.runningDelay;
+            }
+
+            if (status.transitionSteps) {
+                transitionStepsInput.value = status.transitionSteps;
+            }
+
+            if (status.transitionDelay) {
+                transitionDelayInput.value = status.transitionDelay;
+            }
+        }
+
+        async function loadStatus() {
+            try {
+                const response = await fetch('/status');
+                const status = await response.json();
+                updateUI(status);
+            } catch (error) {
+                console.error('Failed to load status:', error);
+                createColorPickers(1);
+            }
+        }
+
+        async function sendModeRequest() {
+            const mode = parseInt(modeSelect.value);
+            const isFixedMode = mode === 1;
+            const isRunningMode = mode === 2;
+            const isSmoothMode = mode === 3;
+
+            const request = {
+                mode: mode,
+                fixedColors: isFixedMode ? getColorValues() : null,
+                numOfRunningLeds: isRunningMode ? parseInt(numOfRunningLedsInput.value) : 0,
+                runningDelay: isRunningMode ? parseInt(runningDelayInput.value) : 0,
+                transitionSteps: isSmoothMode ? parseInt(transitionStepsInput.value) : 0,
+                transitionDelay: isSmoothMode ? parseInt(transitionDelayInput.value) : 0
+            };
+
+            try {
+                await fetch('/mode', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(request)
+                });
+            } catch (error) {
+                console.error('Failed to set mode:', error);
+            }
+        }
+
+        modeSelect.addEventListener('change', () => {
+            const mode = parseInt(modeSelect.value);
+            fixedOptions.style.display = mode === 1 ? 'block' : 'none';
+            runningOptions.style.display = mode === 2 ? 'block' : 'none';
+            transitionOptions.style.display = mode === 3 ? 'block' : 'none';
+            sendModeRequest();
+        });
+
+        colorCountSelect.addEventListener('change', () => {
+            const count = parseInt(colorCountSelect.value);
+            createColorPickers(count);
+            sendModeRequest();
+        });
+
+        numOfRunningLedsInput.addEventListener('input', sendModeRequest);
+        runningDelayInput.addEventListener('input', sendModeRequest);
+        transitionStepsInput.addEventListener('input', sendModeRequest);
+        transitionDelayInput.addEventListener('input', sendModeRequest);
+
+        loadStatus();
+    </script>
+</body>
+</html>

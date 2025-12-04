@@ -1,40 +1,36 @@
 ﻿using System.Diagnostics;
+using System.Drawing;
 
 namespace MusicLED;
 
 public class AudioProcessor : IDisposable
 {
     private Process _audioRecordProcess;
-    private bool _isDisposing = false;
 
     private readonly BluetoothHandler _bluetoothHandler;
     private readonly FrequencyBands _frequencyBands;
     private readonly FFTAnalyzer _fftAnalyzer;
     private readonly LEDController _ledController;
-    private readonly BeatDetector _beatDetector;
-    private readonly SustainDetector _sustainDetector;
-    private readonly List<short> _sampleBuffer = new List<short>(4096);
+    private readonly List<short> _sampleBuffer = new List<short>(8192);
 
-    public AudioProcessor()
+    public AudioProcessor(
+        BluetoothHandler bluetoothHandler,
+        FFTAnalyzer fftAnalyzer,
+        LEDController ledController)
     {
-        _bluetoothHandler = new BluetoothHandler();
+        _bluetoothHandler = bluetoothHandler;
+        _fftAnalyzer = fftAnalyzer;
+        _ledController = ledController;
         _frequencyBands = new FrequencyBands();
-        _fftAnalyzer = new FFTAnalyzer(48000, 1024);  // Reduced FFT size from 2048 to 1024 for lower latency
-        _ledController = new LEDController();
-        _beatDetector = new BeatDetector();
-        _sustainDetector = new SustainDetector();
-    }
-
-    public void Init()
-    {
-        _bluetoothHandler.RunSetupSpeakerScript();
     }
 
     public async Task MonitorAudio(CancellationToken cancellationToken)
     {
         try
         {
-            var buffer = new byte[2048];  // Reduced from 4096 to lower latency
+            var buffer = new byte[8192];
+
+            _ledController.SetSingleLED(0, Color.Blue);
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -87,18 +83,15 @@ public class AudioProcessor : IDisposable
     {
         ConvertBytesToSamples(buffer, bytesRead);
 
-        while (_sampleBuffer.Count >= 1024)  // Reduced from 2048
+        while (_sampleBuffer.Count >= 2048)
         {
-            var samplesToAnalyze = _sampleBuffer.GetRange(0, 1024).ToArray();
+            var samplesToAnalyze = _sampleBuffer.GetRange(0, 2048).ToArray();
 
             _fftAnalyzer.Analyze(samplesToAnalyze, _frequencyBands);
 
-            bool isBeat = _beatDetector.DetectBeat(_frequencyBands.SmoothedBass);
-            bool isSustained = _sustainDetector.IsSustained(_frequencyBands.SmoothedMid);
+            _ledController.UpdateFromFrequencies(_frequencyBands);
 
-            _ledController.UpdateFromFrequencies(_frequencyBands, isBeat, isSustained);
-
-            _sampleBuffer.RemoveRange(0, 512);  // Remove half for 50% overlap
+            _sampleBuffer.RemoveRange(0, 1024);
         }
     }
 
@@ -119,11 +112,10 @@ public class AudioProcessor : IDisposable
         {
             StopAudioRecordProcess();
 
-            // Use parec for monitoring sinks - it's designed for this and won't interfere with playback
             var startInfo = new ProcessStartInfo()
             {
                 FileName = "parec",
-                Arguments = $"--format=s16le --rate=48000 --channels=2 --device={deviceName}",
+                Arguments = $"--format=s16le --rate=48000 --channels=2 --latency-msec=20 --device={deviceName}",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -151,7 +143,7 @@ public class AudioProcessor : IDisposable
         }
     }
 
-    private void StopAudioRecordProcess()
+    public void StopAudioRecordProcess()
     {
         if (_audioRecordProcess != null)
         {
@@ -177,16 +169,7 @@ public class AudioProcessor : IDisposable
 
     public void Dispose()
     {
-        if (_isDisposing)
-        {
-            return;
-        }
-
-        _isDisposing = true;
         GC.SuppressFinalize(this);
-
         StopAudioRecordProcess();
-        _bluetoothHandler.RunResetSpeakerScript();
-        _ledController.Dispose();
     }
 }
