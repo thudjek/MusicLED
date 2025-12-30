@@ -21,7 +21,7 @@
             padding: 5px;
             font-size: 16px;
         }
-        #fixedOptions, #runningOptions, #transitionOptions {
+        #fixedOptions, #runningOptions, #transitionOptions, #bluetoothOptions {
             display: none;
             margin-top: 15px;
         }
@@ -39,6 +39,87 @@
             width: 50px;
             height: 40px;
             cursor: pointer;
+        }
+        .bt-section {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        .bt-status {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+        .bt-connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .bt-disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .bt-device-list {
+            list-style: none;
+            padding: 0;
+            margin: 10px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .bt-device-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border: 1px solid #ddd;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            background: white;
+        }
+        .bt-device-name {
+            font-weight: bold;
+        }
+        .bt-device-mac {
+            font-size: 12px;
+            color: #666;
+        }
+        .bt-device-info {
+            flex: 1;
+        }
+        button {
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            margin-left: 5px;
+        }
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .scanning-indicator {
+            display: none;
+            color: #666;
+            font-style: italic;
         }
     </style>
 </head>
@@ -93,17 +174,60 @@
         </div>
     </div>
 
+    <div id="bluetoothOptions">
+        <div class="bt-section">
+            <h3>Bluetooth Speaker</h3>
+
+            <div class="control-group">
+                <button id="btnScan" class="btn-primary" onclick="toggleScanning()">Scan for Devices</button>
+                <span id="scanningIndicator" class="scanning-indicator">Scanning...</span>
+            </div>
+
+            <div id="connectedDevicesContainer">
+                <label>Connected:</label>
+                <ul id="connectedDeviceList" class="bt-device-list">
+                    <li class="bt-device-item">No devices connected</li>
+                </ul>
+            </div>
+
+            <div id="pairedDevicesContainer">
+                <label>Paired:</label>
+                <ul id="pairedDeviceList" class="bt-device-list">
+                    <li class="bt-device-item">No paired devices</li>
+                </ul>
+            </div>
+
+            <div id="discoveredDevicesContainer">
+                <label>Discovered:</label>
+                <ul id="discoveredDeviceList" class="bt-device-list">
+                    <li class="bt-device-item">No devices discovered</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
     <script>
         const modeSelect = document.getElementById('mode');
         const fixedOptions = document.getElementById('fixedOptions');
         const runningOptions = document.getElementById('runningOptions');
         const transitionOptions = document.getElementById('transitionOptions');
+        const bluetoothOptions = document.getElementById('bluetoothOptions');
         const colorCountSelect = document.getElementById('colorCount');
         const colorPickersContainer = document.getElementById('colorPickers');
         const numOfRunningLedsInput = document.getElementById('numOfRunningLeds');
         const runningDelayInput = document.getElementById('runningDelay');
         const transitionStepsInput = document.getElementById('transitionSteps');
         const transitionDelayInput = document.getElementById('transitionDelay');
+
+        // Bluetooth elements
+        const btnScan = document.getElementById('btnScan');
+        const scanningIndicator = document.getElementById('scanningIndicator');
+        const connectedDeviceList = document.getElementById('connectedDeviceList');
+        const pairedDeviceList = document.getElementById('pairedDeviceList');
+        const discoveredDeviceList = document.getElementById('discoveredDeviceList');
+
+        let isScanning = false;
+        let devicePollInterval = null;
 
         function getColorValues() {
             const colorInputs = colorPickersContainer.querySelectorAll('input[type="color"]');
@@ -131,6 +255,12 @@
             fixedOptions.style.display = status.mode === 1 ? 'block' : 'none';
             runningOptions.style.display = status.mode === 2 ? 'block' : 'none';
             transitionOptions.style.display = status.mode === 3 ? 'block' : 'none';
+            bluetoothOptions.style.display = status.mode === 4 ? 'block' : 'none';
+
+            // Load Bluetooth devices when Music mode is selected
+            if (status.mode === 4) {
+                loadBluetoothDevices();
+            }
 
             // Set Fixed mode options
             if (status.fixedColors && status.fixedColors.length > 0) {
@@ -202,6 +332,18 @@
             fixedOptions.style.display = mode === 1 ? 'block' : 'none';
             runningOptions.style.display = mode === 2 ? 'block' : 'none';
             transitionOptions.style.display = mode === 3 ? 'block' : 'none';
+            bluetoothOptions.style.display = mode === 4 ? 'block' : 'none';
+
+            if (mode === 4) {
+                loadBluetoothDevices();
+            } else {
+                // Stop scanning and polling when leaving Music mode
+                stopDevicePolling();
+                if (isScanning) {
+                    stopScanning();
+                }
+            }
+
             sendModeRequest();
         });
 
@@ -215,6 +357,168 @@
         runningDelayInput.addEventListener('input', sendModeRequest);
         transitionStepsInput.addEventListener('input', sendModeRequest);
         transitionDelayInput.addEventListener('input', sendModeRequest);
+
+        // Bluetooth Speaker Functions
+        async function loadBluetoothDevices() {
+            try {
+                const response = await fetch('/bluetooth/devices');
+                const groups = await response.json();
+                updateDeviceGroupsUI(groups);
+                updateScanButtonState(groups.isScanning);
+            } catch (error) {
+                console.error('Failed to load Bluetooth devices:', error);
+            }
+        }
+
+        function updateDeviceGroupsUI(groups) {
+            // Connected devices
+            if (groups.connected && groups.connected.length > 0) {
+                connectedDeviceList.innerHTML = groups.connected.map(device => `
+                    <li class="bt-device-item">
+                        <div class="bt-device-info">
+                            <div class="bt-device-name">${escapeHtml(device.name)}</div>
+                            <div class="bt-device-mac">${device.macAddress}</div>
+                        </div>
+                        <button class="btn-danger" onclick="disconnectDevice('${device.macAddress}')">Disconnect</button>
+                    </li>
+                `).join('');
+            } else {
+                connectedDeviceList.innerHTML = '<li class="bt-device-item">No devices connected</li>';
+            }
+
+            // Paired devices (not connected)
+            if (groups.paired && groups.paired.length > 0) {
+                pairedDeviceList.innerHTML = groups.paired.map(device => `
+                    <li class="bt-device-item">
+                        <div class="bt-device-info">
+                            <div class="bt-device-name">${escapeHtml(device.name)}</div>
+                            <div class="bt-device-mac">${device.macAddress}</div>
+                        </div>
+                        <button class="btn-success" onclick="connectToDevice('${device.macAddress}')">Connect</button>
+                    </li>
+                `).join('');
+            } else {
+                pairedDeviceList.innerHTML = '<li class="bt-device-item">No paired devices</li>';
+            }
+
+            // Discovered devices (not paired)
+            if (groups.discovered && groups.discovered.length > 0) {
+                discoveredDeviceList.innerHTML = groups.discovered.map(device => `
+                    <li class="bt-device-item">
+                        <div class="bt-device-info">
+                            <div class="bt-device-name">${escapeHtml(device.name)}</div>
+                            <div class="bt-device-mac">${device.macAddress}</div>
+                        </div>
+                        <button class="btn-success" onclick="connectToDevice('${device.macAddress}')">Connect</button>
+                    </li>
+                `).join('');
+            } else {
+                discoveredDeviceList.innerHTML = '<li class="bt-device-item">No devices discovered</li>';
+            }
+        }
+
+        function updateScanButtonState(scanning) {
+            isScanning = scanning;
+            if (scanning) {
+                btnScan.textContent = 'Stop Scanning';
+                btnScan.className = 'btn-danger';
+                scanningIndicator.style.display = 'inline';
+            } else {
+                btnScan.textContent = 'Scan for Devices';
+                btnScan.className = 'btn-primary';
+                scanningIndicator.style.display = 'none';
+            }
+        }
+
+        async function toggleScanning() {
+            if (isScanning) {
+                await stopScanning();
+            } else {
+                await startScanning();
+            }
+        }
+
+        async function startScanning() {
+            try {
+                btnScan.disabled = true;
+                await fetch('/bluetooth/scan/start', { method: 'POST' });
+                updateScanButtonState(true);
+                startDevicePolling();
+            } catch (error) {
+                console.error('Failed to start scanning:', error);
+            } finally {
+                btnScan.disabled = false;
+            }
+        }
+
+        async function stopScanning() {
+            try {
+                btnScan.disabled = true;
+                await fetch('/bluetooth/scan/stop', { method: 'POST' });
+                updateScanButtonState(false);
+                stopDevicePolling();
+            } catch (error) {
+                console.error('Failed to stop scanning:', error);
+            } finally {
+                btnScan.disabled = false;
+            }
+        }
+
+        function startDevicePolling() {
+            stopDevicePolling();
+            devicePollInterval = setInterval(loadBluetoothDevices, 2000);
+        }
+
+        function stopDevicePolling() {
+            if (devicePollInterval) {
+                clearInterval(devicePollInterval);
+                devicePollInterval = null;
+            }
+        }
+
+        async function connectToDevice(macAddress) {
+            const buttons = document.querySelectorAll('.bt-device-item button');
+            buttons.forEach(btn => btn.disabled = true);
+
+            try {
+                const response = await fetch('/bluetooth/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ macAddress })
+                });
+
+                // Scanning is auto-stopped by the backend, update UI
+                updateScanButtonState(false);
+                stopDevicePolling();
+
+                if (response.ok) {
+                    await loadBluetoothDevices();
+                } else {
+                    alert('Connection failed. Try putting the device in pairing mode.');
+                    await loadBluetoothDevices();
+                }
+            } catch (error) {
+                console.error('Failed to connect:', error);
+                alert('Connection error. Please try again.');
+            } finally {
+                buttons.forEach(btn => btn.disabled = false);
+            }
+        }
+
+        async function disconnectDevice(macAddress) {
+            try {
+                await fetch('/bluetooth/disconnect', { method: 'POST' });
+                await loadBluetoothDevices();
+            } catch (error) {
+                console.error('Failed to disconnect:', error);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
 
         loadStatus();
     </script>

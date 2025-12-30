@@ -1,0 +1,18 @@
+{
+  "profiles": {
+    "Pi SSH Debug": {
+      "commandName": "Executable",
+      "executablePath": "ssh",
+      "commandLineArgs": "pi@raspberrypi.local \"~/vsdbg/vsdbg --interpreter=vscode --attach $(pgrep -f MusicLED)\"",
+      "workingDirectory": "."
+    },
+    "Pi Remote Launch": {
+      "commandName": "SshDebugLaunch",
+      "remoteMachineName": "raspberrypi.local",
+      "userName": "pi",
+      "deployDirectory": "/Projects/MusicLED",
+      "executablePath": "/Projects/MusicLED/MusicLED",
+      "debuggerPath": "~/vsdbg/vsdbg"
+    }
+  }
+}

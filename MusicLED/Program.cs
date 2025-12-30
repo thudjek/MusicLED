@@ -37,6 +37,52 @@ app.MapPost("/mode", ([FromBody] SetModeRequest request) =>
     return Results.Ok();
 });
 
+// Bluetooth speaker management endpoints
+var bluetoothHandler = app.Services.GetRequiredService<BluetoothHandler>();
+
+app.MapPost("/bluetooth/scan/start", async () =>
+{
+    var started = await bluetoothHandler.StartScanningAsync();
+    return started ? Results.Ok() : Results.BadRequest("Scanning already in progress");
+});
+
+app.MapPost("/bluetooth/scan/stop", async () =>
+{
+    await bluetoothHandler.StopScanningAsync();
+    return Results.Ok();
+});
+
+app.MapGet("/bluetooth/devices", async () =>
+{
+    var groups = await bluetoothHandler.GetDeviceGroupsAsync();
+    groups.IsScanning = bluetoothHandler.IsScanning;
+    return Results.Ok(groups);
+});
+
+app.MapGet("/bluetooth/paired", async () =>
+{
+    var devices = await bluetoothHandler.GetPairedDevicesAsync();
+    return Results.Ok(devices);
+});
+
+app.MapGet("/bluetooth/speaker-status", async () =>
+{
+    var status = await bluetoothHandler.GetOutputSpeakerStatusAsync();
+    return Results.Ok(status);
+});
+
+app.MapPost("/bluetooth/connect", async ([FromBody] BluetoothConnectRequest request) =>
+{
+    var success = await bluetoothHandler.ConnectToSpeakerAsync(request.MacAddress);
+    return success ? Results.Ok() : Results.BadRequest("Failed to connect to speaker");
+});
+
+app.MapPost("/bluetooth/disconnect", async () =>
+{
+    var success = await bluetoothHandler.DisconnectSpeakerAsync();
+    return success ? Results.Ok() : Results.BadRequest("Failed to disconnect");
+});
+
 var appTask = app.RunAsync("http://0.0.0.0:5000");
 Console.WriteLine("Web API started on http://0.0.0.0:5000");
 Console.WriteLine("Starting LED controller...");

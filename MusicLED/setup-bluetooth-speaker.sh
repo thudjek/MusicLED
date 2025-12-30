@@ -1,11 +1,13 @@
 #!/bin/bash
 
 #############################################
-# Setup Raspberry Pi as Bluetooth Speaker
+# Setup Raspberry Pi as Bluetooth Audio Hub
+# - Receives audio from phone (A2DP Sink)
+# - Sends audio to Bluetooth speakers (A2DP Source)
 #############################################
 
 echo "================================================"
-echo "Setting up Raspberry Pi as Bluetooth Speaker"
+echo "Setting up Raspberry Pi as Bluetooth Audio Hub"
 echo "================================================"
 echo ""
 
@@ -64,16 +66,17 @@ else
 fi
 echo ""
 
-# 5. Configure Bluetooth adapter
+# 5. Configure Bluetooth adapter for dual-role audio
 echo -e "${YELLOW}Configuring Bluetooth adapter...${NC}"
 
 # Set device name
-sudo hciconfig hci0 name "Pi Speaker"
-check_status "Set name to 'Pi Speaker'"
+sudo hciconfig hci0 name "RPi"
+check_status "Set name to 'RPi'"
 
-# Set device class to audio/speaker
-sudo hciconfig hci0 class 0x20041C
-check_status "Set device class to speaker"
+# Set device class to Audio device (supports both source and sink)
+# Class 0x24041C = Audio/Video, Rendering + Capturing (dual role)
+sudo hciconfig hci0 class 0x24041C
+check_status "Set device class to audio (dual-role)"
 
 # Make discoverable and pairable
 sudo hciconfig hci0 piscan
@@ -102,3 +105,27 @@ exit
 EOF
 check_status "Bluetooth configured via bluetoothctl"
 echo ""
+
+# 8. Verify A2DP profiles are available
+echo -e "${YELLOW}Verifying Bluetooth audio profiles...${NC}"
+if bluetoothctl show | grep -q "UUID: Audio Sink"; then
+    echo -e "${GREEN}✓ A2DP Sink available (receive audio from phone)${NC}"
+else
+    echo -e "${YELLOW}⚠ A2DP Sink may not be available${NC}"
+fi
+
+if bluetoothctl show | grep -q "UUID: Audio Source"; then
+    echo -e "${GREEN}✓ A2DP Source available (send audio to speakers)${NC}"
+else
+    echo -e "${YELLOW}⚠ A2DP Source may not be available${NC}"
+fi
+echo ""
+
+echo "================================================"
+echo "Bluetooth Audio Hub setup complete!"
+echo ""
+echo "Usage:"
+echo "  - Connect your phone to 'Rpi' to send music"
+echo "  - Use the web UI to connect to Bluetooth speakers"
+echo "  - Audio will be routed: Phone -> Pi -> Speaker"
+echo "================================================"
